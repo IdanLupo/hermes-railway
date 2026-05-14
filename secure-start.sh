@@ -57,13 +57,18 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
 {
     auto_https off
     admin off
-    log {
+    log default {
         output stderr
         level INFO
     }
 }
 
 :$PROXY_PORT {
+    log {
+        output stderr
+        level INFO
+        format console
+    }
     basic_auth /* {
         $USER_NAME $PASSWORD_HASH
     }
@@ -75,7 +80,6 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
         # through Caddy on the public hostname), so this is transparent.
         header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
         header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
-        header_up X-Real-IP {remote}
     }
 }
 EOF
