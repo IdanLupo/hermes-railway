@@ -85,8 +85,9 @@ echo "[secure-start] Starting Hermes gateway..." >&2
 hermes gateway run &
 
 # 6. Start the dashboard bound to localhost only (no --insecure).
+#    --tui exposes the in-browser Chat tab (embedded `hermes --tui` via PTY).
 echo "[secure-start] Starting Hermes dashboard on 127.0.0.1:$DASHBOARD_INTERNAL_PORT..." >&2
-hermes dashboard --host 127.0.0.1 --port "$DASHBOARD_INTERNAL_PORT" --no-open &
+hermes dashboard --host 127.0.0.1 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tui &
 
 # Give the dashboard a moment to bind before Caddy tries to proxy to it.
 sleep 3
