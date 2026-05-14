@@ -57,13 +57,6 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
 {
     auto_https off
     admin off
-    # Railway-edge connects to the container with HTTP/2 by default, but
-    # WebSocket upgrades (Connection: Upgrade) don't work over HTTP/2 in
-    # most implementations. Force HTTP/1.1 only on Caddy's listener so
-    # Railway-edge negotiates a protocol where WS upgrades are supported.
-    servers {
-        protocols h1
-    }
     log default {
         output stderr
         level INFO
