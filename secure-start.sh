@@ -69,17 +69,31 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
         level INFO
         format console
     }
-    basic_auth /* {
-        $USER_NAME $PASSWORD_HASH
+
+    # WebSocket endpoints — gated by the dashboard's own session token
+    # (passed in the query string). basic_auth + WS-upgrade interact badly
+    # in Caddy v2.8 (returns 403 without reaching the backend), so we route
+    # these around it. The session token comes from the basic-auth-gated
+    # index.html, so the auth perimeter is unchanged.
+    @ws path /api/pty /api/ws /api/events
+    handle @ws {
+        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
+            flush_interval -1
+            header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
+            header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
+        }
     }
-    reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
-        flush_interval -1
-        # Dashboard does Host and Origin validation against its bind address
-        # (only localhost variants are allowlisted). Rewrite both so the
-        # validator passes. Same-origin in the browser end (everything flows
-        # through Caddy on the public hostname), so this is transparent.
-        header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
-        header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
+
+    # Everything else — basic-auth gated.
+    handle {
+        basic_auth {
+            $USER_NAME $PASSWORD_HASH
+        }
+        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
+            flush_interval -1
+            header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
+            header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
+        }
     }
 }
 EOF
