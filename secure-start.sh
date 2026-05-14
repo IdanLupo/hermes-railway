@@ -57,24 +57,22 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
 {
     auto_https off
     admin off
+    debug
     log default {
         output stderr
-        level INFO
+        level DEBUG
     }
 }
 
 :$PROXY_PORT {
     log {
         output stderr
-        level INFO
+        level DEBUG
         format console
     }
 
     # WebSocket endpoints — gated by the dashboard's own session token
-    # (passed in the query string). basic_auth + WS-upgrade interact badly
-    # in Caddy v2.8 (returns 403 without reaching the backend), so we route
-    # these around it. The session token comes from the basic-auth-gated
-    # index.html, so the auth perimeter is unchanged.
+    # (passed in the query string).
     @ws path /api/pty /api/ws /api/events
     handle @ws {
         reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
