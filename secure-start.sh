@@ -107,19 +107,25 @@ EOF
 SKILLS_REPO_DIR="$HERMES_HOME/skills/ai-experts"
 SKILLS_REPO_URL="https://github.com/AI-Experts-LLC/skills.git"
 if [ -n "$SKILLS_REPO_TOKEN" ]; then
+    # Use x-access-token URL form (most reliable for fine-grained PATs).
+    AUTH_URL="https://x-access-token:${SKILLS_REPO_TOKEN}@github.com/AI-Experts-LLC/skills.git"
     if [ -d "$SKILLS_REPO_DIR/.git" ]; then
         echo "[secure-start] Updating AI Experts skills repo..." >&2
         (cd "$SKILLS_REPO_DIR" && \
-         git -c "http.https://github.com/.extraheader=Authorization: bearer $SKILLS_REPO_TOKEN" \
-             pull --quiet --ff-only 2>&1 | head -3 || \
-         echo "[secure-start] WARN: git pull failed, keeping existing checkout") >&2
+         git remote set-url origin "$AUTH_URL" && \
+         git pull --ff-only 2>&1 | head -5) >&2 || \
+         echo "[secure-start] WARN: git pull failed, keeping existing checkout" >&2
     else
         echo "[secure-start] Cloning AI Experts skills repo..." >&2
         mkdir -p "$HERMES_HOME/skills"
         rm -rf "$SKILLS_REPO_DIR"
-        git -c "http.https://github.com/.extraheader=Authorization: bearer $SKILLS_REPO_TOKEN" \
-            clone --quiet --depth 1 "$SKILLS_REPO_URL" "$SKILLS_REPO_DIR" 2>&1 | head -3 >&2 || \
+        git clone --depth 1 "$AUTH_URL" "$SKILLS_REPO_DIR" 2>&1 | head -5 >&2 || \
             echo "[secure-start] WARN: clone failed, skipping custom skills" >&2
+        # Strip token from remote URL so it isn't stored on disk in plain text.
+        if [ -d "$SKILLS_REPO_DIR/.git" ]; then
+            (cd "$SKILLS_REPO_DIR" && \
+             git remote set-url origin "https://github.com/AI-Experts-LLC/skills.git")
+        fi
     fi
     if [ -d "$SKILLS_REPO_DIR/skills" ]; then
         echo "[secure-start] Linking individual skills to $HERMES_HOME/skills/ ..." >&2
