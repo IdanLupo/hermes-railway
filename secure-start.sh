@@ -105,10 +105,15 @@ EOF
 echo "[secure-start] Starting Hermes gateway..." >&2
 hermes gateway run &
 
-# 6. Start the dashboard bound to localhost only (no --insecure).
+# 6. Start the dashboard. We bind to 0.0.0.0 + --insecure so the dashboard's
+#    _ws_client_is_allowed() loopback check is bypassed for /api/pty (the
+#    embedded chat WebSocket). With Caddy in front basic-auth-gating all
+#    public traffic and Railway only routing PORT (9119) externally, port
+#    9120 is NEVER reachable from outside the container — the --insecure
+#    flag is misleading; in this context it's still safe.
 #    --tui exposes the in-browser Chat tab (embedded `hermes --tui` via PTY).
-echo "[secure-start] Starting Hermes dashboard on 127.0.0.1:$DASHBOARD_INTERNAL_PORT..." >&2
-hermes dashboard --host 127.0.0.1 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tui &
+echo "[secure-start] Starting Hermes dashboard on 0.0.0.0:$DASHBOARD_INTERNAL_PORT (container-internal)..." >&2
+hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tui --insecure &
 
 # Give the dashboard a moment to bind before Caddy tries to proxy to it.
 sleep 3
