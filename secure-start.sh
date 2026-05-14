@@ -70,13 +70,25 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
         format console
     }
 
-    # WS endpoints — minimal proxy, no header rewrites (debug)
+    # Strip X-Forwarded-For globally. uvicorn (backing the Hermes dashboard)
+    # trusts proxy headers from 127.0.0.1 and rewrites ws.client.host based
+    # on X-Forwarded-For. The dashboard's _ws_client_is_allowed() then
+    # rejects /api/pty because the rewritten client IP isn't loopback.
+    request_header -X-Forwarded-For
+    request_header -X-Forwarded-Host
+    request_header -X-Real-Ip
+
+    # WebSocket endpoints — gated by the dashboard's session token (in
+    # query string). Bypass basic_auth (it interferes with WS upgrade).
     @ws path /api/pty /api/ws /api/events
     handle @ws {
-        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT
+        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
+            header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
+            header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
+        }
     }
 
-    # Everything else — basic-auth gated, with localhost Host/Origin rewrite.
+    # Everything else — basic-auth gated.
     handle {
         basic_auth {
             $USER_NAME $PASSWORD_HASH
