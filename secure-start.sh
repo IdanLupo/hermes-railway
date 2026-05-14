@@ -101,6 +101,44 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
 }
 EOF
 
+# 4b. Sync AI Experts private skills repo into /opt/data/skills/ai-experts/.
+#     Requires SKILLS_REPO_TOKEN (fine-grained PAT scoped to AI-Experts-LLC/skills,
+#     contents: read). If unset, we skip — bundled Hermes skills still work.
+SKILLS_REPO_DIR="$HERMES_HOME/skills/ai-experts"
+SKILLS_REPO_URL="https://github.com/AI-Experts-LLC/skills.git"
+if [ -n "$SKILLS_REPO_TOKEN" ]; then
+    if [ -d "$SKILLS_REPO_DIR/.git" ]; then
+        echo "[secure-start] Updating AI Experts skills repo..." >&2
+        (cd "$SKILLS_REPO_DIR" && \
+         git -c "http.https://github.com/.extraheader=Authorization: bearer $SKILLS_REPO_TOKEN" \
+             pull --quiet --ff-only 2>&1 | head -3 || \
+         echo "[secure-start] WARN: git pull failed, keeping existing checkout") >&2
+    else
+        echo "[secure-start] Cloning AI Experts skills repo..." >&2
+        mkdir -p "$HERMES_HOME/skills"
+        rm -rf "$SKILLS_REPO_DIR"
+        git -c "http.https://github.com/.extraheader=Authorization: bearer $SKILLS_REPO_TOKEN" \
+            clone --quiet --depth 1 "$SKILLS_REPO_URL" "$SKILLS_REPO_DIR" 2>&1 | head -3 >&2 || \
+            echo "[secure-start] WARN: clone failed, skipping custom skills" >&2
+    fi
+    if [ -d "$SKILLS_REPO_DIR/skills" ]; then
+        echo "[secure-start] Linking individual skills to $HERMES_HOME/skills/ ..." >&2
+        for skill in "$SKILLS_REPO_DIR"/skills/*/; do
+            [ -d "$skill" ] || continue
+            name=$(basename "$skill")
+            # Prefix our skills with "ai-experts-" to avoid collisions
+            # with the 87 bundled Hermes skills (which already include
+            # notion, linear, airtable, etc.).
+            target="$HERMES_HOME/skills/ai-experts-$name"
+            rm -rf "$target"
+            ln -s "$skill" "$target"
+        done
+        echo "[secure-start] $(ls -d $HERMES_HOME/skills/ai-experts-* 2>/dev/null | wc -l) custom skills linked" >&2
+    fi
+else
+    echo "[secure-start] SKILLS_REPO_TOKEN not set; skipping AI Experts skills clone" >&2
+fi
+
 # 5. Start the gateway in the background.
 echo "[secure-start] Starting Hermes gateway..." >&2
 hermes gateway run &
