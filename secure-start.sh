@@ -70,24 +70,18 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
         format console
     }
 
-    # WebSocket endpoints — gated by the dashboard's own session token
-    # (passed in the query string).
+    # WS endpoints — minimal proxy, no header rewrites (debug)
     @ws path /api/pty /api/ws /api/events
     handle @ws {
-        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
-            flush_interval -1
-            header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
-            header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
-        }
+        reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT
     }
 
-    # Everything else — basic-auth gated.
+    # Everything else — basic-auth gated, with localhost Host/Origin rewrite.
     handle {
         basic_auth {
             $USER_NAME $PASSWORD_HASH
         }
         reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
-            flush_interval -1
             header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
             header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
         }
