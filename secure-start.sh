@@ -69,13 +69,13 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
     }
     reverse_proxy 127.0.0.1:$DASHBOARD_INTERNAL_PORT {
         flush_interval -1
-        # Dashboard rejects requests whose Host header doesn't match its bind
-        # address. Rewrite to 127.0.0.1:<port> so the dashboard's host
-        # validator passes. Same-origin in the browser (everything flows
-        # through Caddy on the public hostname), so CORS isn't affected.
+        # Dashboard does Host and Origin validation against its bind address
+        # (only localhost variants are allowlisted). Rewrite both so the
+        # validator passes. Same-origin in the browser end (everything flows
+        # through Caddy on the public hostname), so this is transparent.
         header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
+        header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
         header_up X-Real-IP {remote}
-        header_up X-Forwarded-Host {host}
     }
 }
 EOF
