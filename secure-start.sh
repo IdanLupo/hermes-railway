@@ -78,6 +78,18 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
     request_header -X-Forwarded-Host
     request_header -X-Real-Ip
 
+    # Inbound webhooks (AgentMail message.received, etc).
+    # Bypasses basic_auth so external services can POST without creds.
+    # Hermes routes are gated by long-random path tokens — the URL is
+    # the shared secret (Slack-style). Anything else returns 404 from
+    # Hermes route-not-found.
+    @webhooks path /webhooks/*
+    handle @webhooks {
+        reverse_proxy 127.0.0.1:8644 {
+            flush_interval -1
+        }
+    }
+
     # WebSocket endpoints — gated by the dashboard's session token (in
     # query string). Bypass basic_auth (it interferes with WS upgrade).
     @ws path /api/pty /api/ws /api/events
