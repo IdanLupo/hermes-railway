@@ -49,6 +49,30 @@ if [ ! -x "$CADDY" ]; then
     chmod +x "$CADDY"
 fi
 
+# 2b. File-access tooling, cached on the volume like Caddy. Both are OPTIONAL:
+#     every step here is guarded so a download/launch failure can never abort
+#     boot (the gateway is the critical path; file access is an add-on).
+#       - filebrowser → web UI on /files (browse/upload/download/delete)
+#       - rclone      → WebDAV on /dav (mountable in macOS Finder)
+FILEBROWSER="$HERMES_HOME/bin/filebrowser"
+RCLONE="$HERMES_HOME/bin/rclone"
+if [ ! -x "$FILEBROWSER" ]; then
+    echo "[secure-start] Downloading filebrowser..." >&2
+    curl -fsSL "https://github.com/filebrowser/filebrowser/releases/latest/download/linux-amd64-filebrowser.tar.gz" \
+        | tar -xz -C "$HERMES_HOME/bin" filebrowser 2>/dev/null \
+        && chmod +x "$FILEBROWSER" \
+        || echo "[secure-start] WARN: filebrowser download failed; /files unavailable" >&2
+fi
+if [ ! -x "$RCLONE" ]; then
+    echo "[secure-start] Downloading rclone..." >&2
+    ( curl -fsSL "https://downloads.rclone.org/rclone-current-linux-amd64.zip" -o /tmp/rclone.zip \
+        && python3 -m zipfile -e /tmp/rclone.zip /tmp/rclone-x \
+        && cp "$(find /tmp/rclone-x -name rclone -type f | head -1)" "$RCLONE" \
+        && chmod +x "$RCLONE" ) \
+        || echo "[secure-start] WARN: rclone download failed; /dav unavailable" >&2
+    rm -rf /tmp/rclone.zip /tmp/rclone-x 2>/dev/null || true
+fi
+
 # 3. Hash the password (bcrypt via Caddy's built-in hasher).
 PASSWORD_HASH=$("$CADDY" hash-password --plaintext "$PASSWORD")
 
@@ -98,6 +122,28 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
             header_up Host 127.0.0.1:$DASHBOARD_INTERNAL_PORT
             header_up Origin http://127.0.0.1:$DASHBOARD_INTERNAL_PORT
         }
+    }
+
+    # File browser (web UI) on /files — basic-auth gated. filebrowser runs
+    # with --baseURL /files so it owns the whole /files/* path; pass through
+    # unchanged. Returns 502 if filebrowser didn't start (non-fatal add-on).
+    @files path /files /files/*
+    handle @files {
+        basic_auth {
+            $USER_NAME $PASSWORD_HASH
+        }
+        reverse_proxy 127.0.0.1:9121
+    }
+
+    # WebDAV on /dav (mount in macOS Finder) — basic-auth gated. rclone serves
+    # with --baseurl /dav. WebDAV verbs (PROPFIND/MKCOL/MOVE/...) pass through
+    # reverse_proxy by default.
+    @dav path /dav /dav/*
+    handle @dav {
+        basic_auth {
+            $USER_NAME $PASSWORD_HASH
+        }
+        reverse_proxy 127.0.0.1:9122
     }
 
     # Everything else — basic-auth gated.
@@ -170,6 +216,20 @@ hermes gateway run &
 #    --tui exposes the in-browser Chat tab (embedded `hermes --tui` via PTY).
 echo "[secure-start] Starting Hermes dashboard on 0.0.0.0:$DASHBOARD_INTERNAL_PORT (container-internal)..." >&2
 hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tui --insecure &
+
+# 6b. Start file-access services (optional add-ons; Caddy basic-auth gates
+#     them, so filebrowser runs --noauth and rclone runs without auth). Both
+#     bind loopback only and are guarded so a failure never blocks the gateway.
+if [ -x "$FILEBROWSER" ]; then
+    echo "[secure-start] Starting filebrowser on 127.0.0.1:9121 (/files)..." >&2
+    "$FILEBROWSER" -r /opt/data -a 127.0.0.1 -p 9121 -b /files \
+        -d "$HERMES_HOME/.filebrowser.db" --noauth >/tmp/filebrowser.log 2>&1 &
+fi
+if [ -x "$RCLONE" ]; then
+    echo "[secure-start] Starting rclone WebDAV on 127.0.0.1:9122 (/dav)..." >&2
+    "$RCLONE" serve webdav /opt/data --addr 127.0.0.1:9122 --baseurl /dav \
+        >/tmp/rclone.log 2>&1 &
+fi
 
 # Give the dashboard a moment to bind before Caddy tries to proxy to it.
 sleep 3
