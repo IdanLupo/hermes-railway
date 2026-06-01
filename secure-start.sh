@@ -220,14 +220,23 @@ hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tu
 # 6b. Start file-access services (optional add-ons; Caddy basic-auth gates
 #     them, so filebrowser runs --noauth and rclone runs without auth). Both
 #     bind loopback only and are guarded so a failure never blocks the gateway.
+#
+#     SECURITY: both are rooted at $HERMES_HOME/share, NOT the volume root.
+#     The volume root holds secrets (.env, auth.json, .dashboard-password,
+#     config.yaml, OAuth tokens, skills, cron). Serving only ./share means
+#     those credentials are never reachable (read OR write) over /files or
+#     /dav — an allow-list, so a future secret dropped elsewhere stays private.
+#     Atlas is told (SOUL.md) to put anything shareable under ./share.
+SHARE_DIR="$HERMES_HOME/share"
+mkdir -p "$SHARE_DIR" 2>/dev/null || true
 if [ -x "$FILEBROWSER" ]; then
-    echo "[secure-start] Starting filebrowser on 127.0.0.1:9121 (/files)..." >&2
-    "$FILEBROWSER" -r /opt/data -a 127.0.0.1 -p 9121 -b /files \
+    echo "[secure-start] Starting filebrowser on 127.0.0.1:9121 (/files, root $SHARE_DIR)..." >&2
+    "$FILEBROWSER" -r "$SHARE_DIR" -a 127.0.0.1 -p 9121 -b /files \
         -d "$HERMES_HOME/.filebrowser.db" --noauth >/tmp/filebrowser.log 2>&1 &
 fi
 if [ -x "$RCLONE" ]; then
-    echo "[secure-start] Starting rclone WebDAV on 127.0.0.1:9122 (/dav)..." >&2
-    "$RCLONE" serve webdav /opt/data --addr 127.0.0.1:9122 --baseurl /dav \
+    echo "[secure-start] Starting rclone WebDAV on 127.0.0.1:9122 (/dav, root $SHARE_DIR)..." >&2
+    "$RCLONE" serve webdav "$SHARE_DIR" --addr 127.0.0.1:9122 --baseurl /dav \
         >/tmp/rclone.log 2>&1 &
 fi
 
