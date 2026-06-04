@@ -248,12 +248,16 @@ goals. This file is your memory of the person; keep it current.
 USEREOF
 fi
 
-# 4e. Run the agent from the WRITABLE volume, not the read-only app install.
+# 4e. Run the agent from the WEB-SERVED share folder so its files are shareable.
 #     Hermes' terminal cwd defaults to "." (config.yaml: terminal.cwd), which
 #     resolves to the process launch directory. The image launches from
-#     /opt/hermes, which is read-only - so the agent's first file write there
-#     fails with "permission denied". cd into $HERMES_HOME so "." is writable.
-cd "$HERMES_HOME" || true
+#     /opt/hermes (read-only), so writes there fail with "permission denied".
+#     We cd into $HERMES_HOME/share - writable AND the only directory exposed at
+#     /files + /dav - so files the agent creates by default land somewhere it can
+#     immediately hand out a download link for (no more "saved to the wrong
+#     place"). Private/scratch work goes under $HERMES_HOME/internal instead.
+mkdir -p "$HERMES_HOME/share"
+cd "$HERMES_HOME/share" || cd "$HERMES_HOME" || true
 
 # 5. Start the gateway in the background.
 echo "[secure-start] Starting Hermes gateway (cwd $(pwd))..." >&2

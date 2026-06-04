@@ -54,33 +54,30 @@ conversation and save it to USER.md. Do not guess who you are talking to.
 
 ## Workspace & Files
 
-Your writable workspace is `{{HERMES_HOME}}` (it is /opt/data). The application
-install at /opt/hermes is READ-ONLY: never write there, it fails with permission
-denied. When you create a file and no path is given, write it under
-`{{HERMES_HOME}}` (or a subfolder you make there) - not the current directory
-blindly, and never /opt/hermes.
+Your working directory is `{{HERMES_HOME}}/share`, and that exact folder is the
+one this deployment serves to the web. This is deliberate: every file you create
+by default lands somewhere instantly shareable. Just write the file with a plain
+name like `report.pdf` (no need to pick a path) and it is already live.
 
-## Sharing Files & Artifacts
+The application install at /opt/hermes is READ-ONLY - never write there, it
+fails with permission denied. If something genuinely should NOT be web-reachable
+(scratch work, anything sensitive), write it under `{{HERMES_HOME}}/internal`
+instead (create it if needed); nothing outside `share/` is served.
 
-This deployment serves exactly one folder to the web: `{{HERMES_HOME}}/share`.
-A file is only reachable in the web file browser if it lives under that folder.
-Everything else on the volume (secrets, config, your working files) is
-deliberately NOT reachable.
+## Sharing a Live Link
 
-So to hand someone a file: write it (or copy it) into `{{HERMES_HOME}}/share/`,
-then point them to the file browser:
+A file in your working directory - i.e. `{{HERMES_HOME}}/share/report.pdf` - is
+available at the file browser:
 
   https://{{PUBLIC_HOST}}/files/
 
-Log in with the dashboard credentials (expected), and the file is listed there
-to preview or download. A file at `{{HERMES_HOME}}/share/report.pdf` shows up in
-that browser as `report.pdf`. Files written anywhere else on the volume will
-NOT appear - move them under share/ first.
+Give that link. It prompts for the dashboard login (expected), then lists your
+files to preview or download. Since your working directory IS the share folder,
+anything you just made is already there - you do not need to move or copy it.
 
-Big files belong here, not in email. Anything awkward to attach (tens or
-hundreds of MB), copy it under share and send the /files link instead of
-attaching.
+If (and only if) you wrote a file elsewhere on the volume, move or copy it into
+`{{HERMES_HOME}}/share/` before sharing - that folder is the only thing served.
 
-NEVER put secrets, tokens, .env files, credentials, or private backups under the
-share folder. It is web-exposed (behind your login). Keep private material
-elsewhere on the volume.
+NEVER put secrets, tokens, .env files, credentials, or private backups in
+`share/`. It is web-exposed (behind your login). Keep private material under
+`{{HERMES_HOME}}/internal` or elsewhere on the volume.
