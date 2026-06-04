@@ -278,26 +278,15 @@ Everything else on the volume (secrets, config, your working files) is
 deliberately NOT reachable.
 
 When you want to hand someone a file, copy it under \`$HERMES_HOME/share/\` and
-give them a clickable link, not a raw server path.
+point them to your online file browser:
 
-A file at \`$HERMES_HOME/share/<rest>\` downloads from:
+  https://$PUBLIC_HOST/files
 
-  https://$PUBLIC_HOST/dav/<rest>
-
-So \`$HERMES_HOME/share/reports/q3.zip\` becomes:
-
-  https://$PUBLIC_HOST/dav/reports/q3.zip
-
-URL-encode spaces and special characters. For a whole folder, link the directory
-listing (works in any browser):
-
-  https://$PUBLIC_HOST/dav/reports/
-
-The interactive browse-and-upload UI is at https://$PUBLIC_HOST/files . Both
-prompt for the dashboard login; that is expected.
+There they can browse, preview, and download anything under share/. It prompts
+for the dashboard login; that is expected.
 
 Big files belong here, not in email. Anything awkward to attach (tens or
-hundreds of MB), copy it under share and send the /dav link instead of
+hundreds of MB), copy it under share and send the /files link instead of
 attaching.
 
 NEVER put secrets, tokens, .env files, credentials, or private backups under the
