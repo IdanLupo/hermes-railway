@@ -17,7 +17,7 @@ HERMES_HOME="${HERMES_HOME:-/opt/data}"
 PROXY_PORT="${PORT:-9119}"
 DASHBOARD_INTERNAL_PORT=9120
 
-USER_NAME="${DASHBOARD_USER:-lucas}"
+USER_NAME="${DASHBOARD_USER:-admin}"
 PASSWORD_FILE="$HERMES_HOME/.dashboard-password"
 
 # 1. Resolve the password (env var -> cached file -> generate).
@@ -159,48 +159,153 @@ cat > "$HERMES_HOME/Caddyfile" <<EOF
 }
 EOF
 
-# 4b. Sync AI Experts private skills repo into /opt/data/skills/ai-experts/.
-#     Requires SKILLS_REPO_TOKEN (fine-grained PAT scoped to AI-Experts-LLC/skills,
-#     contents: read). If unset, we skip — bundled Hermes skills still work.
-SKILLS_REPO_DIR="$HERMES_HOME/skills/ai-experts"
-SKILLS_REPO_URL="https://github.com/AI-Experts-LLC/skills.git"
-if [ -n "$SKILLS_REPO_TOKEN" ]; then
-    # Use x-access-token URL form (most reliable for fine-grained PATs).
-    AUTH_URL="https://x-access-token:${SKILLS_REPO_TOKEN}@github.com/AI-Experts-LLC/skills.git"
+# 4b. Optionally sync a private skills repo into $HERMES_HOME/skills/custom/.
+#     Enable by setting BOTH:
+#       SKILLS_REPO_URL   - https GitHub URL, e.g. https://github.com/you/skills.git
+#       SKILLS_REPO_TOKEN - PAT with contents:read (fine-grained or classic)
+#     The repo is expected to have a top-level skills/<name>/ layout; each
+#     <name> is symlinked into the Hermes skills dir. If either var is unset
+#     we skip — the skills bundled in the Hermes image still work.
+SKILLS_REPO_DIR="$HERMES_HOME/skills/custom"
+if [ -n "$SKILLS_REPO_URL" ] && [ -n "$SKILLS_REPO_TOKEN" ]; then
+    # Build an authenticated URL (x-access-token form works for both classic
+    # and fine-grained PATs). Strip any scheme the user included first.
+    REPO_PATH="${SKILLS_REPO_URL#https://}"
+    REPO_PATH="${REPO_PATH#http://}"
+    AUTH_URL="https://x-access-token:${SKILLS_REPO_TOKEN}@${REPO_PATH}"
+    CLEAN_URL="https://${REPO_PATH}"
     if [ -d "$SKILLS_REPO_DIR/.git" ]; then
-        echo "[secure-start] Updating AI Experts skills repo..." >&2
+        echo "[secure-start] Updating custom skills repo..." >&2
         (cd "$SKILLS_REPO_DIR" && \
          git remote set-url origin "$AUTH_URL" && \
          git pull --ff-only 2>&1 | head -5) >&2 || \
          echo "[secure-start] WARN: git pull failed, keeping existing checkout" >&2
     else
-        echo "[secure-start] Cloning AI Experts skills repo..." >&2
+        echo "[secure-start] Cloning custom skills repo..." >&2
         mkdir -p "$HERMES_HOME/skills"
         rm -rf "$SKILLS_REPO_DIR"
         git clone --depth 1 "$AUTH_URL" "$SKILLS_REPO_DIR" 2>&1 | head -5 >&2 || \
             echo "[secure-start] WARN: clone failed, skipping custom skills" >&2
-        # Strip token from remote URL so it isn't stored on disk in plain text.
-        if [ -d "$SKILLS_REPO_DIR/.git" ]; then
-            (cd "$SKILLS_REPO_DIR" && \
-             git remote set-url origin "https://github.com/AI-Experts-LLC/skills.git")
-        fi
+    fi
+    # Strip token from remote URL so it isn't stored on disk in plain text.
+    if [ -d "$SKILLS_REPO_DIR/.git" ]; then
+        (cd "$SKILLS_REPO_DIR" && git remote set-url origin "$CLEAN_URL")
     fi
     if [ -d "$SKILLS_REPO_DIR/skills" ]; then
-        echo "[secure-start] Linking individual skills to $HERMES_HOME/skills/ ..." >&2
+        echo "[secure-start] Linking custom skills into $HERMES_HOME/skills/ ..." >&2
         for skill in "$SKILLS_REPO_DIR"/skills/*/; do
             [ -d "$skill" ] || continue
             name=$(basename "$skill")
-            # Prefix our skills with "ai-experts-" to avoid collisions
-            # with the 87 bundled Hermes skills (which already include
-            # notion, linear, airtable, etc.).
-            target="$HERMES_HOME/skills/ai-experts-$name"
+            # Prefix with "custom-" to avoid colliding with the skills
+            # bundled in the Hermes image (notion, linear, airtable, etc.).
+            target="$HERMES_HOME/skills/custom-$name"
             rm -rf "$target"
             ln -s "$skill" "$target"
         done
-        echo "[secure-start] $(ls -d $HERMES_HOME/skills/ai-experts-* 2>/dev/null | wc -l) custom skills linked" >&2
+        echo "[secure-start] $(ls -d $HERMES_HOME/skills/custom-* 2>/dev/null | wc -l) custom skills linked" >&2
     fi
 else
-    echo "[secure-start] SKILLS_REPO_TOKEN not set; skipping AI Experts skills clone" >&2
+    echo "[secure-start] SKILLS_REPO_URL/SKILLS_REPO_TOKEN not set; skipping custom skills clone" >&2
+fi
+
+# 4c. Seed a default agent identity (SOUL.md) on FIRST BOOT ONLY.
+#     Hermes reads $HERMES_HOME/SOUL.md as the agent's system identity. We
+#     write it only if absent, so once you edit it (or the agent does), your
+#     version is never clobbered on redeploy. Delete the file to regenerate
+#     this default. The share-link section is wired to the /files + /dav
+#     services this script starts in step 6b, so the agent can hand out
+#     download links out of the box.
+SOUL_FILE="$HERMES_HOME/SOUL.md"
+PUBLIC_HOST="${RAILWAY_PUBLIC_DOMAIN:-your-app.up.railway.app}"
+if [ ! -f "$SOUL_FILE" ]; then
+    echo "[secure-start] Seeding default SOUL.md (none present)..." >&2
+    cat > "$SOUL_FILE" <<SOULEOF
+# SOUL.md
+
+You're Hermes, a chief of staff and executive operator for the person you work
+for. Get it done.
+
+## Core Truths
+
+**Be direct.** No preamble, no "Great question!", no filler. Answer first,
+explain only if asked.
+
+**Be executive.** Think like a chief of staff. Anticipate needs, handle the
+details, surface only what matters. Your operator shouldn't have to manage you;
+you manage things for them.
+
+**Be resourceful before asking.** Figure it out. Read the file. Check the
+context. Search for it. Come back with answers, not questions. If you genuinely
+need a decision, ask one focused question, not five.
+
+**Be a little witty.** Sharp, not corporate. A well-placed quip lands better
+than a wall of caveats.
+
+**Earn trust through competence.** You've been given access to real accounts and
+data. Be careful with external actions. Be bold with internal ones.
+
+## Boundaries
+
+- Private things stay private. Period.
+- When in doubt, ask before acting externally (emails, posts, scheduling,
+  payments).
+- Never send half-baked replies to messaging surfaces.
+- You're not your operator's voice in group chats. Participate; do not
+  impersonate.
+
+## Formatting Rules
+
+- Avoid emdashes. Use commas, periods, semicolons, or rewrite. It reads more
+  human.
+- Short. One main idea per message. Memorable at a glance.
+- Plain text first. Markdown when it helps. Tables rarely.
+
+## Vibe
+
+Direct. Efficient. Witty when it fits. An exec assistant who actually has
+opinions and gets things done without being asked twice.
+
+## Continuity
+
+Each session you wake up fresh. These files are your memory. Read SOUL.md, then
+USER.md and MEMORY.md if they exist. Update them when you learn something worth
+keeping. If you change SOUL.md, mention it to your operator; it is your identity.
+
+## Sharing Files & Artifacts
+
+This deployment serves exactly one folder to the web: \`$HERMES_HOME/share\`.
+Everything else on the volume (secrets, config, your working files) is
+deliberately NOT reachable.
+
+When you want to hand someone a file, copy it under \`$HERMES_HOME/share/\` and
+give them a clickable link, not a raw server path.
+
+A file at \`$HERMES_HOME/share/<rest>\` downloads from:
+
+  https://$PUBLIC_HOST/dav/<rest>
+
+So \`$HERMES_HOME/share/reports/q3.zip\` becomes:
+
+  https://$PUBLIC_HOST/dav/reports/q3.zip
+
+URL-encode spaces and special characters. For a whole folder, link the directory
+listing (works in any browser):
+
+  https://$PUBLIC_HOST/dav/reports/
+
+The interactive browse-and-upload UI is at https://$PUBLIC_HOST/files . Both
+prompt for the dashboard login; that is expected.
+
+Big files belong here, not in email. Anything awkward to attach (tens or
+hundreds of MB), copy it under share and send the /dav link instead of
+attaching.
+
+NEVER put secrets, tokens, .env files, credentials, or private backups under the
+share folder. It is web-exposed (behind your login). Keep private material
+elsewhere on the volume.
+SOULEOF
+else
+    echo "[secure-start] SOUL.md already present; leaving it untouched." >&2
 fi
 
 # 5. Start the gateway in the background.
@@ -226,7 +331,8 @@ hermes dashboard --host 0.0.0.0 --port "$DASHBOARD_INTERNAL_PORT" --no-open --tu
 #     config.yaml, OAuth tokens, skills, cron). Serving only ./share means
 #     those credentials are never reachable (read OR write) over /files or
 #     /dav — an allow-list, so a future secret dropped elsewhere stays private.
-#     Atlas is told (SOUL.md) to put anything shareable under ./share.
+#     Configure your agent (e.g. via its system prompt) to put anything
+#     shareable under ./share.
 SHARE_DIR="$HERMES_HOME/share"
 mkdir -p "$SHARE_DIR" 2>/dev/null || true
 if [ -x "$FILEBROWSER" ]; then
