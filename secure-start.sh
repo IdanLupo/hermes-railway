@@ -214,19 +214,33 @@ fi
 #     source: default-soul.md in this repo) so it's easy to edit in one place;
 #     {{HERMES_HOME}}/{{PUBLIC_HOST}} placeholders are filled in at boot.
 #
-#     We seed when SOUL.md is MISSING or still the stock Hermes default. The
-#     image's s6 cont-init stage2 hook seeds a "# Hermes Agent Persona"
-#     placeholder BEFORE this CMD runs, so a plain absence check never fires -
-#     we must detect and replace that default. Once you (or the agent) edit
-#     SOUL.md, its first line changes and we leave your version untouched.
+#     We replace SOUL.md when it's MISSING or still a stock default - and there
+#     are TWO defaults to match:
+#       1. the s6 cont-init stage2 placeholder ("# Hermes Agent Persona"),
+#          written before this CMD runs; and
+#       2. the gateway's own default_soul.py persona ("...an intelligent AI
+#          assistant created by Nous Research"), which the gateway writes during
+#          first-run init AFTER this point - so we also re-assert it in step 5b
+#          once the gateway is up.
+#     Once you (or the agent) customize SOUL.md, neither marker matches and we
+#     leave your version untouched.
 SOUL_FILE="$HERMES_HOME/SOUL.md"
 SOUL_TEMPLATE="/opt/hermes/default-soul.md"
 PUBLIC_HOST="${RAILWAY_PUBLIC_DOMAIN:-your-app.up.railway.app}"
-if [ -f "$SOUL_TEMPLATE" ] && { [ ! -f "$SOUL_FILE" ] || head -1 "$SOUL_FILE" | grep -q '^# Hermes Agent Persona'; }; then
-    echo "[secure-start] Seeding Hermes SOUL.md from template..." >&2
+soul_is_default() {
+    [ ! -f "$SOUL_FILE" ] && return 0
+    head -1 "$SOUL_FILE" | grep -q '^# Hermes Agent Persona' && return 0
+    head -3 "$SOUL_FILE" | grep -q 'intelligent AI assistant created by Nous Research' && return 0
+    return 1
+}
+seed_soul() {
     sed -e "s|{{HERMES_HOME}}|$HERMES_HOME|g" \
         -e "s|{{PUBLIC_HOST}}|$PUBLIC_HOST|g" \
         "$SOUL_TEMPLATE" > "$SOUL_FILE"
+}
+if [ -f "$SOUL_TEMPLATE" ] && soul_is_default; then
+    echo "[secure-start] Seeding Hermes SOUL.md from template..." >&2
+    seed_soul
 else
     echo "[secure-start] Custom SOUL.md present (or template missing); leaving it untouched." >&2
 fi
@@ -262,6 +276,23 @@ cd "$HERMES_HOME/share" || cd "$HERMES_HOME" || true
 # 5. Start the gateway in the background.
 echo "[secure-start] Starting Hermes gateway (cwd $(pwd))..." >&2
 hermes gateway run &
+
+# 5b. Re-assert our SOUL.md after the gateway's first-run init. On a FRESH
+#     volume the gateway writes its own default_soul.py persona shortly after
+#     start, clobbering the seed from step 4c. Watch for ~30s and replace any
+#     stock default with our persona; the moment SOUL.md is ours,
+#     soul_is_default() is false and this stops touching it. Backgrounded so it
+#     never delays boot, and harmless once converged.
+if [ -f "$SOUL_TEMPLATE" ]; then
+    ( i=0
+      while [ "$i" -lt 15 ]; do
+          if soul_is_default; then
+              seed_soul && echo "[secure-start] SOUL enforcer: re-applied Hermes persona" >&2
+          fi
+          i=$((i + 1))
+          sleep 2
+      done ) &
+fi
 
 # 6. Start the dashboard. We bind to 0.0.0.0 + --insecure so the dashboard's
 #    _ws_client_is_allowed() loopback check is bypassed for /api/pty (the
