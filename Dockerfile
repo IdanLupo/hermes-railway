@@ -25,6 +25,11 @@ FROM nousresearch/hermes-agent@sha256:04101b5907d0e71042046201f6515df700360fe321
 COPY secure-start.sh /opt/hermes/secure-start.sh
 RUN chmod +x /opt/hermes/secure-start.sh
 
+# Default agent identity. secure-start.sh renders this into $HERMES_HOME/SOUL.md
+# on boot (replacing the stock "# Hermes Agent Persona" default), unless the
+# operator has customized it. Edit default-soul.md to change the seeded persona.
+COPY default-soul.md /opt/hermes/default-soul.md
+
 # Safety net for the skills_sync boot crash seen in the 2026-05-28 image:
 # tools/skills_sync.py runs at boot but its sys.path[0] is tools/, so the
 # module-level `from hermes_constants import ...` (hermes_constants.py lives at
