@@ -271,19 +271,33 @@ Each session you wake up fresh. These files are your memory. Read SOUL.md, then
 USER.md and MEMORY.md if they exist. Update them when you learn something worth
 keeping. If you change SOUL.md, mention it to your operator; it is your identity.
 
+If USER.md says the operator is still unknown, ask their name early in the
+conversation and save it to USER.md. Do not guess who you are talking to.
+
+## Workspace & Files
+
+Your writable workspace is \`$HERMES_HOME\` (it is /opt/data). The application
+install at /opt/hermes is READ-ONLY: never write there, it fails with permission
+denied. When you create a file and no path is given, write it under
+\`$HERMES_HOME\` (or a subfolder you make there) - not the current directory
+blindly, and never /opt/hermes.
+
 ## Sharing Files & Artifacts
 
 This deployment serves exactly one folder to the web: \`$HERMES_HOME/share\`.
+A file is only reachable in the web file browser if it lives under that folder.
 Everything else on the volume (secrets, config, your working files) is
 deliberately NOT reachable.
 
-When you want to hand someone a file, copy it under \`$HERMES_HOME/share/\` and
-point them to your online file browser:
+So to hand someone a file: write it (or copy it) into \`$HERMES_HOME/share/\`,
+then point them to the file browser:
 
-  https://$PUBLIC_HOST/files
+  https://$PUBLIC_HOST/files/
 
-There they can browse, preview, and download anything under share/. It prompts
-for the dashboard login; that is expected.
+Log in with the dashboard credentials (expected), and the file is listed there
+to preview or download. A file at \`$HERMES_HOME/share/report.pdf\` shows up in
+that browser as \`report.pdf\`. Files written anywhere else on the volume will
+NOT appear - move them under share/ first.
 
 Big files belong here, not in email. Anything awkward to attach (tens or
 hundreds of MB), copy it under share and send the /files link instead of
@@ -297,8 +311,32 @@ else
     echo "[secure-start] SOUL.md already present; leaving it untouched." >&2
 fi
 
+# 4d. Seed a USER.md stub on first boot only, so the agent has a place to
+#     record who it works for (and knows to ask). Never clobbered once written.
+USER_FILE="$HERMES_HOME/USER.md"
+if [ ! -f "$USER_FILE" ]; then
+    echo "[secure-start] Seeding default USER.md (none present)..." >&2
+    cat > "$USER_FILE" <<'USEREOF'
+# USER.md
+
+Operator: (unknown so far)
+
+On your first conversation, ask who you are working for - their name and how they
+want to be addressed - and replace the line above. Add anything else worth
+remembering here over time: role, company, timezone, preferences, recurring
+goals. This file is your memory of the person; keep it current.
+USEREOF
+fi
+
+# 4e. Run the agent from the WRITABLE volume, not the read-only app install.
+#     Hermes' terminal cwd defaults to "." (config.yaml: terminal.cwd), which
+#     resolves to the process launch directory. The image launches from
+#     /opt/hermes, which is read-only - so the agent's first file write there
+#     fails with "permission denied". cd into $HERMES_HOME so "." is writable.
+cd "$HERMES_HOME" || true
+
 # 5. Start the gateway in the background.
-echo "[secure-start] Starting Hermes gateway..." >&2
+echo "[secure-start] Starting Hermes gateway (cwd $(pwd))..." >&2
 hermes gateway run &
 
 # 6. Start the dashboard. We bind to 0.0.0.0 + --insecure so the dashboard's
