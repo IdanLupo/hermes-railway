@@ -50,16 +50,8 @@ RUN python3 -c "import os; p='/opt/hermes/tools/skills_sync.py'; (os.path.exists
 # ENTRYPOINT silently kept Hermes from ever starting. So we keep the image's
 # s6 entrypoint and just pass secure-start.sh as the CMD; main-wrapper sees an
 # executable first arg and runs `s6-setuidgid hermes /opt/hermes/secure-start.sh`.
-# Fix Railway volume permissions: the volume mounts as root:root but
-# Hermes runs as `hermes`. We override the entrypoint to run a permissions
-# fix THEN hand off to the real init — this runs after the volume is mounted.
-RUN mkdir -p /opt/data && chown -R hermes:hermes /opt/data
-COPY --chmod=755 <<'BOOTFIX' /opt/hermes/railway-boot.sh
-#!/bin/bash
-# Railway volumes mount as root:root. Fix ownership before anything else.
-chown -R hermes:hermes /opt/data 2>/dev/null || true
-exec /init /opt/hermes/docker/main-wrapper.sh "$@"
-BOOTFIX
-
-ENTRYPOINT [ "/opt/hermes/railway-boot.sh" ]
+# Railway volumes mount as root:root. Set RAILWAY_RUN_UID=0 in Railway
+# env vars so the container starts as root — Hermes's own s6 entrypoint
+# then chowns and drops to the hermes user.
+ENTRYPOINT [ "/init", "/opt/hermes/docker/main-wrapper.sh" ]
 CMD [ "/opt/hermes/secure-start.sh" ]
