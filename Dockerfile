@@ -3,13 +3,16 @@
 #
 # Adapted from Shinyduo/hermes-agent (MIT) by adding auth.
 
-# Pinned to nousresearch/hermes-agent:latest as published 2026-05-29 00:44 UTC
-# (digest below). The 2026-05-28 build (sha256:35c8784e...) shipped a broken
-# boot sequence (tools/skills_sync.py crashed on `import hermes_constants`),
-# which took the service down. Pinning a digest forces a deterministic pull.
-# To update later: re-pin to the new `latest` digest and verify a clean boot.
-#   curl -s https://hub.docker.com/v2/repositories/nousresearch/hermes-agent/tags/latest | jq -r .digest
-FROM nousresearch/hermes-agent@sha256:04101b5907d0e71042046201f6515df700360fe32191777ee96664d2f1eb358a
+# Pinned to nousresearch/hermes-agent:v2026.6.19 (v0.17.0 "The Reach Release"),
+# published 2026-06-19 (digest below). We pin a versioned RELEASE tag by digest
+# rather than the rolling :latest — both for a deterministic pull and because
+# :latest has shipped broken boots before (the 2026-05-28 build crashed in
+# tools/skills_sync.py on `import hermes_constants` and took the service down).
+# A tagged release is the tested artifact; :latest just tracks main's HEAD.
+# To update later: pick the newest release tag, grab its digest, re-pin below,
+# and verify a clean boot (watch `railway logs` for the [secure-start] lines).
+#   curl -s "https://hub.docker.com/v2/repositories/nousresearch/hermes-agent/tags/?ordering=last_updated&page_size=20" | jq -r '.results[] | "\(.name)\t\(.digest)"'
+FROM nousresearch/hermes-agent@sha256:9f367c7756ef087661a361536a89f438d57a122b958dc23d82d456b1433e6e9e
 
 # secure-start.sh boots:
 #   1) hermes gateway (background)
